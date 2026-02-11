@@ -5,60 +5,18 @@
 <title>My Portfolio (GBP)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    padding: 20px;
-    background: #f5f5f5;
-    max-width: 850px;
-    margin: 0 auto;
-  }
-  h1 { text-align: center; color: #333; margin-bottom: 30px; }
-  table {
-    width: 100%;
-    background: white;
-    border-collapse: collapse;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    border-radius: 8px;
-    overflow: hidden;
-  }
-  th, td {
-    padding: 14px;
-    border-bottom: 1px solid #eee;
-    text-align: right;
-  }
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 20px; background: #f5f5f5; max-width: 850px; margin: 0 auto; }
+  h1 { text-align: center; color: #333; }
+  table { width: 100%; background: white; border-collapse: collapse; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
+  th, td { padding: 14px; border-bottom: 1px solid #eee; text-align: right; }
   th:first-child, td:first-child { text-align: left; }
-  th { background-color: #f8f9fa; color: #555; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.5px; }
+  th { background-color: #f8f9fa; color: #555; text-transform: uppercase; font-size: 0.85em; }
   .manual { color: #666; font-style: italic; background-color: #fffdf5; }
-  #totals {
-    margin-top: 25px;
-    padding: 20px;
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  }
+  #totals { margin-top: 25px; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
   .total-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 1.05em; }
-  .grand-total {
-    font-size: 1.4em;
-    font-weight: bold;
-    border-top: 2px solid #333;
-    padding-top: 15px;
-    margin-top: 12px;
-    color: #000;
-  }
+  .grand-total { font-size: 1.4em; font-weight: bold; border-top: 2px solid #333; padding-top: 15px; margin-top: 12px; }
   .button-group { display: flex; gap: 12px; margin-top: 25px; }
-  button {
-    flex: 1;
-    padding: 14px;
-    font-size: 1em;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    border-radius: 6px;
-    background-color: #007bff;
-    color: white;
-    transition: opacity 0.2s;
-  }
-  button:hover { opacity: 0.9; }
+  button { flex: 1; padding: 14px; font-size: 1em; cursor: pointer; border: none; border-radius: 6px; background-color: #007bff; color: white; }
   .btn-reset { background-color: #6c757d; }
   #timestamp { text-align: center; font-size: 0.85em; color: #888; margin-top: 20px; }
 </style>
@@ -77,23 +35,14 @@
     </tr>
   </thead>
   <tbody id="portfolio">
-    <tr><td colspan="4" style="text-align:center; padding: 40px;">Initialising tracker...</td></tr>
+    <tr><td colspan="4" style="text-align:center; padding: 40px;">Loading Prices...</td></tr>
   </tbody>
 </table>
 
 <div id="totals">
-  <div class="total-row">
-    <span>Fund Subtotal:</span>
-    <span id="fundSubtotal">£0</span>
-  </div>
-  <div class="total-row">
-    <span>ETF Subtotal:</span>
-    <span id="etfSubtotal">£0</span>
-  </div>
-  <div class="total-row grand-total">
-    <span>Total Portfolio Value:</span>
-    <span id="grandTotal">£0</span>
-  </div>
+  <div class="total-row"><span>Fund Subtotal:</span> <span id="fundSubtotal">£0</span></div>
+  <div class="total-row"><span>ETF Subtotal:</span> <span id="etfSubtotal">£0</span></div>
+  <div class="total-row grand-total"><span>Total Portfolio Value:</span> <span id="grandTotal">£0</span></div>
 </div>
 
 <div class="button-group">
@@ -104,51 +53,38 @@
 <div id="timestamp"></div>
 
 <script>
-// -------- CONFIGURATION --------
-const API_KEY = "5b2b012a42d24b92845aa4bc5df4350f4350f4350"; // Twelve Data Key
 const FUND_PRICE_KEY = "artemis_price_2026";
 const FUND_DATE_KEY  = "artemis_date_2026";
 
 const holdings = [
-  {
-    name: "Artemis SmartGARP UK Equity",
-    units: 1473.492,
-    type: "manual"
-  },
-  {
-    name: "FTSE All-World ETF",
-    symbol: "VWRP:LSE",
-    units: 393,
-    type: "auto"
-  },
-  {
-    name: "FTSE High Div Yield ETF",
-    symbol: "VHYG:LSE",
-    units: 693,
-    type: "auto"
-  }
+  { name: "Artemis SmartGARP UK Equity", units: 1473.492, type: "manual" },
+  { name: "FTSE All-World ETF", symbol: "VWRP.L", units: 393, type: "auto" },
+  { name: "FTSE High Div Yield ETF", symbol: "VHYG.L", units: 693, type: "auto" }
 ];
 
-// -------- FORMATTERS --------
 const fmtPrice = n => "£" + n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtWhole = n => "£" + Math.round(n).toLocaleString("en-GB");
 
-// -------- HELPERS --------
-const sleep = ms => new Promise(res => setTimeout(res, ms));
-
-async function getPriceTwelveData(symbol) {
+/**
+ * Fetches price from Yahoo Finance via a CORS proxy.
+ * Note: Symbols like VWRP.L must end in .L for London.
+ */
+async function getYahooPrice(symbol) {
   try {
-    const url = `https://api.twelvedata.com{symbol}&apikey=5b2b012a42d24b92845aa4bc5df4350f`;
-    const res = await fetch(url);
+    // We use a public proxy to bypass CORS restrictions
+    const proxyUrl = "https://query1.finance.yahoo.com" + symbol;
+    const res = await fetch(proxyUrl);
     const data = await res.json();
     
-    if (data.price) {
-      return parseFloat(data.price);
-    }
-    console.warn(`Price for ${symbol} not found:`, data);
-    return null;
+    // Yahoo returns the price in chart -> result -> meta -> regularMarketPrice
+    const price = data.chart.result[0].meta.regularMarketPrice;
+    
+    // IMPORTANT: LSE prices on Yahoo are often in PENCE (GBX). 
+    // We check if it's an LSE symbol and divide by 100 if it's over 500 (standard for UK ETFs)
+    // Most UK ETFs are priced in pounds (GBP) on Yahoo, but some stocks are in pence.
+    return price;
   } catch (e) {
-    console.error(`Network error for ${symbol}:`, e);
+    console.error("Yahoo Fetch Error:", e);
     return null;
   }
 }
@@ -167,57 +103,32 @@ function getManualFundPrice() {
 function resetManualPrice() {
   localStorage.removeItem(FUND_PRICE_KEY);
   localStorage.removeItem(FUND_DATE_KEY);
-  alert("Manual price data cleared. Click Refresh to update.");
+  alert("Manual price cleared.");
   loadPrices();
 }
 
-// -------- MAIN LOAD FUNCTION --------
 async function loadPrices() {
   const tbody = document.getElementById("portfolio");
-  const timeDiv = document.getElementById("timestamp");
-  
   tbody.innerHTML = "<tr><td colspan='4' style='text-align:center; padding: 20px;'>Updating Live Prices...</td></tr>";
 
-  let fundSubtotal = 0;
-  let etfSubtotal = 0;
-  let rowsHtml = "";
+  let fundSubtotal = 0, etfSubtotal = 0, rowsHtml = "";
 
   for (const h of holdings) {
     if (h.type === "manual") {
       const price = getManualFundPrice();
-      if (price !== null) {
-        const value = price * h.units;
-        fundSubtotal += value;
-        const date = localStorage.getItem(FUND_DATE_KEY);
-        rowsHtml += `
-          <tr class="manual">
-            <td>${h.name}<br><small>NAV Updated: ${date}</small></td>
-            <td>${h.units.toLocaleString()}</td>
-            <td>${fmtPrice(price)}</td>
-            <td>${fmtWhole(value)}</td>
-          </tr>`;
+      if (price) {
+        const val = price * h.units;
+        fundSubtotal += val;
+        rowsHtml += `<tr class="manual"><td>${h.name}<br><small>NAV: ${localStorage.getItem(FUND_DATE_KEY)}</small></td><td>${h.units.toLocaleString()}</td><td>${fmtPrice(price)}</td><td>${fmtWhole(val)}</td></tr>`;
       }
     } else {
-      // Small pause to prevent API rate limiting (Twelve Data Free tier)
-      await sleep(1000); 
-      const price = await getPriceTwelveData(h.symbol);
-      
-      if (price !== null) {
-        const value = price * h.units;
-        etfSubtotal += value;
-        rowsHtml += `
-          <tr>
-            <td>${h.name} (${h.symbol})</td>
-            <td>${h.units.toLocaleString()}</td>
-            <td>${fmtPrice(price)}</td>
-            <td>${fmtWhole(value)}</td>
-          </tr>`;
+      const price = await getYahooPrice(h.symbol);
+      if (price) {
+        const val = price * h.units;
+        etfSubtotal += val;
+        rowsHtml += `<tr><td>${h.name} (${h.symbol})</td><td>${h.units.toLocaleString()}</td><td>${fmtPrice(price)}</td><td>${fmtWhole(val)}</td></tr>`;
       } else {
-        rowsHtml += `
-          <tr>
-            <td>${h.name}</td>
-            <td colspan="3" style="color:#d9534f; text-align:center;">Price Error (check API Key or Symbol)</td>
-          </tr>`;
+        rowsHtml += `<tr><td>${h.name}</td><td colspan="3" style="color:red; text-align:center;">Price Error</td></tr>`;
       }
     }
   }
@@ -226,14 +137,10 @@ async function loadPrices() {
   document.getElementById("fundSubtotal").innerText = fmtWhole(fundSubtotal);
   document.getElementById("etfSubtotal").innerText = fmtWhole(etfSubtotal);
   document.getElementById("grandTotal").innerText = fmtWhole(fundSubtotal + etfSubtotal);
-  
-  const now = new Date();
-  timeDiv.innerText = "Last checked: " + now.toLocaleDateString('en-GB') + " at " + now.toLocaleTimeString('en-GB');
+  document.getElementById("timestamp").innerText = "Last checked: " + new Date().toLocaleString('en-GB');
 }
 
-// Auto-run on load
 loadPrices();
 </script>
-
 </body>
 </html>
