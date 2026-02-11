@@ -6,44 +6,88 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   body {
-    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     padding: 20px;
     background: #f5f5f5;
+    max-width: 800px;
+    margin: 0 auto;
   }
   h1 {
     text-align: center;
+    color: #333;
   }
   table {
     width: 100%;
     background: white;
     border-collapse: collapse;
     margin-top: 20px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
   }
   th, td {
-    padding: 10px;
-    border-bottom: 1px solid #ddd;
+    padding: 12px;
+    border-bottom: 1px solid #eee;
     text-align: right;
   }
   th:first-child, td:first-child {
     text-align: left;
   }
-  .manual {
-    color: #555;
-    font-style: italic;
+  th {
+    background-color: #f8f9fa;
+    font-weight: 600;
   }
-  .subtotal {
-    font-weight: bold;
-    background: #fafafa;
+  .manual {
+    color: #666;
+    font-style: italic;
   }
   #totals {
     margin-top: 20px;
-    font-size: 1.1em;
+    padding: 15px;
+    background: white;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  }
+  .total-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+  }
+  .grand-total {
+    font-size: 1.3em;
+    font-weight: bold;
+    border-top: 2px solid #333;
+    padding-top: 10px;
+    margin-top: 10px;
+  }
+  .button-group {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
   }
   button {
-    width: 100%;
+    flex: 1;
     padding: 12px;
     font-size: 1em;
-    margin-top: 20px;
+    cursor: pointer;
+    border: none;
+    border-radius: 4px;
+    background-color: #007bff;
+    color: white;
+    transition: background 0.2s;
+  }
+  button:hover {
+    background-color: #0056b3;
+  }
+  .btn-reset {
+    background-color: #6c757d;
+  }
+  .btn-reset:hover {
+    background-color: #5a6268;
+  }
+  #timestamp {
+    text-align: center;
+    font-size: 0.85em;
+    color: #888;
+    margin-top: 15px;
   }
 </style>
 </head>
@@ -60,122 +104,164 @@
       <th>Value (£)</th>
     </tr>
   </thead>
-  <tbody id="portfolio"></tbody>
+  <tbody id="portfolio">
+    <tr><td colspan="4">Click Refresh to load data...</td></tr>
+  </tbody>
 </table>
 
 <div id="totals">
-  <div id="fundSubtotal"></div>
-  <div id="etfSubtotal"></div>
-  <div id="grandTotal" style="font-size:1.3em;font-weight:bold;"></div>
+  <div class="total-row">
+    <span>Fund Subtotal:</span>
+    <span id="fundSubtotal">£0</span>
+  </div>
+  <div class="total-row">
+    <span>ETF Subtotal:</span>
+    <span id="etfSubtotal">£0</span>
+  </div>
+  <div class="total-row grand-total">
+    <span>Total Portfolio:</span>
+    <span id="grandTotal">£0</span>
+  </div>
 </div>
 
-<button onclick="loadPrices()">Refresh Prices</button>
+<div class="button-group">
+  <button onclick="loadPrices()">Refresh Prices</button>
+  <button class="btn-reset" onclick="resetManualPrice()">Reset Manual Price</button>
+</div>
+
+<div id="timestamp"></div>
 
 <script>
+// -------- CONFIGURATION --------
 const API_KEY = "TX9DIBISXPWNA4LR";
+const FUND_PRICE_KEY = "artemis_price";
+const FUND_DATE_KEY  = "artemis_date";
 
-// -------- HOLDINGS --------
 const holdings = [
   {
-    name: "Artemis SmartGARP UK Equity Fund Class C Acc GBP",
+    name: "Artemis SmartGARP UK Equity",
     units: 1473.492,
     type: "manual"
   },
   {
-    name: "FTSE All-World UCITS ETF",
+    name: "FTSE All-World ETF",
     symbol: "VWRP.L",
     units: 393,
     type: "auto"
   },
   {
-    name: "FTSE All-World High Dividend Yield UCITS ETF",
+    name: "FTSE High Div Yield ETF",
     symbol: "VHYG.L",
     units: 693,
     type: "auto"
   }
 ];
 
-// -------- STORAGE KEYS --------
-const FUND_PRICE_KEY = "artemis_price";
-const FUND_DATE_KEY  = "artemis_date";
+// -------- FORMATTERS --------
+// Price shows pence
+const fmtPrice = n => "£" + n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Value and Totals are rounded to whole pounds
+const fmtWhole = n => "£" + Math.round(n).toLocaleString("en-GB");
 
 // -------- HELPERS --------
-const fmt = n => "£" + n.toLocaleString("en-GB", { minimumFractionDigits: 2 });
+const sleep = ms => new Promise(res => setTimeout(res, ms));
 
 async function getPriceGBP(symbol) {
-  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${API_KEY}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  return parseFloat(data["Global Quote"]["05. price"]);
+  try {
+    const url = `https://www.alphavantage.co{symbol}&apikey=${API_KEY}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    
+    // Alpha Vantage returns data in "Global Quote" -> "05. price"
+    if (data["Global Quote"] && data["Global Quote"]["05. price"]) {
+      return parseFloat(data["Global Quote"]["05. price"]);
+    }
+    return null;
+  } catch (e) {
+    console.error("Fetch error for " + symbol, e);
+    return null;
+  }
 }
 
 function getManualFundPrice() {
   let price = localStorage.getItem(FUND_PRICE_KEY);
   if (!price) {
     price = prompt("Enter latest Artemis fund NAV (GBP):");
-    if (!price) return null;
+    if (!price || isNaN(price)) return null;
     localStorage.setItem(FUND_PRICE_KEY, price);
-    localStorage.setItem(FUND_DATE_KEY, new Date().toLocaleDateString());
+    localStorage.setItem(FUND_DATE_KEY, new Date().toLocaleDateString('en-GB'));
   }
   return parseFloat(price);
 }
 
-// -------- MAIN --------
+function resetManualPrice() {
+  localStorage.removeItem(FUND_PRICE_KEY);
+  localStorage.removeItem(FUND_DATE_KEY);
+  alert("Manual price cleared.");
+  loadPrices();
+}
+
+// -------- MAIN LOGIC --------
 async function loadPrices() {
   const tbody = document.getElementById("portfolio");
-  tbody.innerHTML = "";
+  const timeDiv = document.getElementById("timestamp");
+  
+  tbody.innerHTML = "<tr><td colspan='4' style='text-align:center'>Fetching live prices (1s delay per item)...</td></tr>";
 
   let fundSubtotal = 0;
   let etfSubtotal = 0;
+  let rowsHtml = "";
 
   for (const h of holdings) {
-    let price, value;
-
     if (h.type === "manual") {
-      price = getManualFundPrice();
-      if (price === null) return;
-      value = price * h.units;
-      fundSubtotal += value;
-
-      const date = localStorage.getItem(FUND_DATE_KEY);
-
-      tbody.innerHTML += `
-        <tr class="manual">
-          <td>${h.name}<br><small>NAV updated: ${date}</small></td>
-          <td>${h.units.toLocaleString()}</td>
-          <td>${fmt(price)}</td>
-          <td>${fmt(value)}</td>
-        </tr>
-      `;
+      const price = getManualFundPrice();
+      if (price !== null) {
+        const value = price * h.units;
+        fundSubtotal += value;
+        const date = localStorage.getItem(FUND_DATE_KEY);
+        rowsHtml += `
+          <tr class="manual">
+            <td>${h.name}<br><small>NAV updated: ${date}</small></td>
+            <td>${h.units.toLocaleString()}</td>
+            <td>${fmtPrice(price)}</td>
+            <td>${fmtWhole(value)}</td>
+          </tr>`;
+      }
     } else {
-      price = await getPriceGBP(h.symbol);
-      value = price * h.units;
-      etfSubtotal += value;
-
-      tbody.innerHTML += `
-        <tr>
-          <td>${h.name}</td>
-          <td>${h.units.toLocaleString()}</td>
-          <td>${fmt(price)}</td>
-          <td>${fmt(value)}</td>
-        </tr>
-      `;
+      // Small pause to respect Alpha Vantage free tier limits
+      await sleep(1000); 
+      const price = await getPriceGBP(h.symbol);
+      
+      if (price !== null) {
+        const value = price * h.units;
+        etfSubtotal += value;
+        rowsHtml += `
+          <tr>
+            <td>${h.name} (${h.symbol})</td>
+            <td>${h.units.toLocaleString()}</td>
+            <td>${fmtPrice(price)}</td>
+            <td>${fmtWhole(value)}</td>
+          </tr>`;
+      } else {
+        rowsHtml += `<tr><td>${h.name}</td><td colspan="3" style="color:red; text-align:center;">API Limit Reached - Retry in 1 min</td></tr>`;
+      }
     }
   }
 
-  document.getElementById("fundSubtotal").innerText =
-    "Fund subtotal: " + fmt(fundSubtotal);
-
-  document.getElementById("etfSubtotal").innerText =
-    "ETF subtotal: " + fmt(etfSubtotal);
-
-  document.getElementById("grandTotal").innerText =
-    "Total portfolio value: " + fmt(fundSubtotal + etfSubtotal);
+  // Update UI
+  tbody.innerHTML = rowsHtml;
+  document.getElementById("fundSubtotal").innerText = fmtWhole(fundSubtotal);
+  document.getElementById("etfSubtotal").innerText = fmtWhole(etfSubtotal);
+  document.getElementById("grandTotal").innerText = fmtWhole(fundSubtotal + etfSubtotal);
+  
+  // Set timestamp
+  const now = new Date();
+  timeDiv.innerText = "Last updated: " + now.toLocaleDateString('en-GB') + " " + now.toLocaleTimeString('en-GB');
 }
 
+// Run on page load
 loadPrices();
 </script>
 
 </body>
 </html>
-
