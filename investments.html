@@ -86,13 +86,15 @@ const holdings = [
     name: "FTSE All-World UCITS ETF",
     symbol: "VWRP.L",
     units: 393,
-    type: "auto"
+    type: "auto",
+    priceUnit: "GBP"
   },
   {
     name: "FTSE All-World High Dividend Yield UCITS ETF",
     symbol: "VHYG.L",
     units: 693,
-    type: "auto"
+    type: "auto",
+    priceUnit: "GBX"   // ← priced in pence
   }
 ];
 
@@ -102,30 +104,26 @@ const FUND_DATE_KEY  = "artemis_date";
 /* ================= HELPERS ================= */
 
 const fmtPrice = n =>
-  "£" + n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  "£" + n.toLocaleString("en-GB", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
 
 const fmtValue = n =>
   "£" + Math.round(n).toLocaleString("en-GB");
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function getPriceGBP(symbol) {
-  try {
-    const url =
-      `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${API_KEY}`;
-    const res = await fetch(url);
-    const data = await res.json();
+async function getPrice(symbol) {
+  const url =
+    `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${API_KEY}`;
+  const res = await fetch(url);
+  const data = await res.json();
 
-    const quote = data["Global Quote"];
-    if (!quote || !quote["05. price"]) {
-      console.warn("No price data for", symbol, data);
-      return null;
-    }
+  const quote = data["Global Quote"];
+  if (!quote || !quote["05. price"]) return null;
 
-    return parseFloat(quote["05. price"]);
-  } catch {
-    return null;
-  }
+  return parseFloat(quote["05. price"]);
 }
 
 function getManualFundPrice() {
@@ -146,7 +144,6 @@ function getManualFundPrice() {
 
 function clearCache() {
   if (!confirm("Clear saved fund price and reset app?")) return;
-
   localStorage.removeItem(FUND_PRICE_KEY);
   localStorage.removeItem(FUND_DATE_KEY);
   loadPrices();
@@ -183,32 +180,27 @@ async function loadPrices() {
         </tr>
       `;
     } else {
-      price = await getPriceGBP(h.symbol);
+      price = await getPrice(h.symbol);
+      if (price === null) continue;
 
-      if (price === null || isNaN(price)) {
-        tbody.innerHTML += `
-          <tr>
-            <td>${h.name}</td>
-            <td>${h.units.toLocaleString()}</td>
-            <td>—</td>
-            <td>—</td>
-          </tr>
-        `;
-      } else {
-        value = price * h.units;
-        etfSubtotal += value;
-
-        tbody.innerHTML += `
-          <tr>
-            <td>${h.name}</td>
-            <td>${h.units.toLocaleString()}</td>
-            <td>${fmtPrice(price)}</td>
-            <td>${fmtValue(value)}</td>
-          </tr>
-        `;
+      // 🔑 Convert pence → pounds if needed
+      if (h.priceUnit === "GBX") {
+        price = price / 100;
       }
 
-      // 🔑 Prevent Alpha Vantage throttling
+      value = price * h.units;
+      etfSubtotal += value;
+
+      tbody.innerHTML += `
+        <tr>
+          <td>${h.name}</td>
+          <td>${h.units.toLocaleString()}</td>
+          <td>${fmtPrice(price)}</td>
+          <td>${fmtValue(value)}</td>
+        </tr>
+      `;
+
+      // Prevent API throttling
       await sleep(1200);
     }
   }
@@ -220,7 +212,8 @@ async function loadPrices() {
     "ETF subtotal: " + fmtValue(etfSubtotal);
 
   document.getElementById("grandTotal").innerText =
-    "Total portfolio value: " + fmtValue(fundSubtotal + etfSubtotal);
+    "Total portfolio value: " +
+    fmtValue(fundSubtotal + etfSubtotal);
 }
 
 loadPrices();
