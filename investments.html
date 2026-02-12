@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <title>Investments</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <style>
   body {
     font-family: -apple-system, BlinkMacSystemFont, sans-serif;
@@ -13,11 +16,16 @@
   h1 {
     text-align: center;
   }
+  .meta {
+    text-align: center;
+    font-size: 0.9em;
+    color: #666;
+  }
   table {
     width: 100%;
     background: white;
     border-collapse: collapse;
-    margin-top: 20px;
+    margin-top: 15px;
   }
   th, td {
     padding: 10px;
@@ -41,14 +49,21 @@
     font-size: 1em;
     margin-top: 12px;
   }
-  .secondary {
-    background: #eee;
+  canvas {
+    background: white;
+    margin-top: 30px;
+    padding: 10px;
   }
 </style>
 </head>
 <body>
 
 <h1>Investments (£)</h1>
+
+<div class="meta">
+  Prices: <strong>Delayed</strong><br>
+  Last updated: <span id="lastUpdated">—</span>
+</div>
 
 <table>
   <thead>
@@ -69,7 +84,9 @@
 </div>
 
 <button onclick="loadPrices()">Refresh Prices</button>
-<button class="secondary" onclick="clearCache()">Clear cache / re-enter fund price</button>
+<button onclick="clearCache()">Clear cache / re-enter fund price</button>
+
+<canvas id="historyChart" height="220"></canvas>
 
 <script>
 /* ================= CONFIG ================= */
@@ -83,38 +100,37 @@ const holdings = [
     type: "manual"
   },
   {
-    name: "VWRP.L FTSE All-World UCITS ETF",
+    name: "FTSE All-World UCITS ETF",
     symbol: "VWRP.L",
     units: 393,
     type: "auto",
     priceUnit: "GBP"
   },
   {
-    name: "VHYG.L FTSE All-World High Dividend Yield UCITS ETF",
+    name: "FTSE All-World High Dividend Yield UCITS ETF",
     symbol: "VHYG.L",
     units: 693,
     type: "auto",
-    priceUnit: "GBX"   // ← priced in pence
+    priceUnit: "GBX"
   }
 ];
 
-const FUND_PRICE_KEY = "artemis_price";
-const FUND_DATE_KEY  = "artemis_date";
+const TODAY = new Date().toISOString().slice(0,10);
 
 /* ================= HELPERS ================= */
 
-const fmtPrice = n =>
-  "£" + n.toLocaleString("en-GB", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-
-const fmtValue = n =>
-  "£" + Math.round(n).toLocaleString("en-GB");
-
+const fmtPrice = n => "£" + n.toFixed(2);
+const fmtValue = n => "£" + Math.round(n).toLocaleString("en-GB");
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function getPrice(symbol) {
+function cacheKey(symbol) {
+  return `price_${symbol}_${TODAY}`;
+}
+
+async function fetchETFPrice(symbol) {
+  const cached = localStorage.getItem(cacheKey(symbol));
+  if (cached) return parseFloat(cached);
+
   const url =
     `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${API_KEY}`;
   const res = await fetch(url);
@@ -123,30 +139,69 @@ async function getPrice(symbol) {
   const quote = data["Global Quote"];
   if (!quote || !quote["05. price"]) return null;
 
-  return parseFloat(quote["05. price"]);
+  const price = parseFloat(quote["05. price"]);
+  localStorage.setItem(cacheKey(symbol), price);
+  return price;
 }
 
 function getManualFundPrice() {
-  let price = localStorage.getItem(FUND_PRICE_KEY);
-
+  let price = localStorage.getItem("fund_price");
   if (!price) {
     price = prompt("Enter latest Artemis fund NAV (GBP):");
     if (!price) return null;
-
-    localStorage.setItem(FUND_PRICE_KEY, price);
-    localStorage.setItem(FUND_DATE_KEY, new Date().toLocaleDateString());
+    localStorage.setItem("fund_price", price);
   }
-
   return parseFloat(price);
+}
+
+/* ================= HISTORY ================= */
+
+function saveHistory(total) {
+  const history = JSON.parse(localStorage.getItem("history") || "{}");
+  history[TODAY] = Math.round(total);
+  localStorage.setItem("history", JSON.stringify(history));
+}
+
+function drawHistory() {
+  const history = JSON.parse(localStorage.getItem("history") || "{}");
+  const labels = Object.keys(history);
+  const data = Object.values(history);
+
+  if (labels.length < 2) return;
+
+  new Chart(document.getElementById("historyChart"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Total Portfolio Value (£)",
+        data,
+        borderWidth: 2,
+        fill: false
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        y: {
+          ticks: {
+            callback: v => "£" + v.toLocaleString("en-GB")
+          }
+        }
+      }
+    }
+  });
 }
 
 /* ================= CACHE ================= */
 
 function clearCache() {
-  if (!confirm("Clear saved fund price and reset app?")) return;
-  localStorage.removeItem(FUND_PRICE_KEY);
-  localStorage.removeItem(FUND_DATE_KEY);
-  loadPrices();
+  if (!confirm("Clear all cached prices and history?")) return;
+  localStorage.clear();
+  location.reload();
 }
 
 /* ================= MAIN ================= */
@@ -156,39 +211,32 @@ async function loadPrices() {
   tbody.innerHTML = "";
 
   let fundSubtotal = 0;
-  let etfSubtotal  = 0;
+  let etfSubtotal = 0;
 
   for (const h of holdings) {
-    let price = null;
-    let value = null;
+    let price;
 
     if (h.type === "manual") {
       price = getManualFundPrice();
-      if (price === null || isNaN(price)) return;
+      if (!price) return;
 
-      value = price * h.units;
+      const value = price * h.units;
       fundSubtotal += value;
-
-      const date = localStorage.getItem(FUND_DATE_KEY);
 
       tbody.innerHTML += `
         <tr class="manual">
-          <td>${h.name}<br><small>NAV updated: ${date}</small></td>
+          <td>${h.name}</td>
           <td>${h.units.toLocaleString()}</td>
           <td>${fmtPrice(price)}</td>
           <td>${fmtValue(value)}</td>
-        </tr>
-      `;
+        </tr>`;
     } else {
-      price = await getPrice(h.symbol);
-      if (price === null) continue;
+      price = await fetchETFPrice(h.symbol);
+      if (!price) continue;
 
-      // 🔑 Convert pence → pounds if needed
-      if (h.priceUnit === "GBX") {
-        price = price / 100;
-      }
+      if (h.priceUnit === "GBX") price /= 100;
 
-      value = price * h.units;
+      const value = price * h.units;
       etfSubtotal += value;
 
       tbody.innerHTML += `
@@ -197,23 +245,26 @@ async function loadPrices() {
           <td>${h.units.toLocaleString()}</td>
           <td>${fmtPrice(price)}</td>
           <td>${fmtValue(value)}</td>
-        </tr>
-      `;
+        </tr>`;
 
-      // Prevent API throttling
       await sleep(1200);
     }
   }
 
+  const total = fundSubtotal + etfSubtotal;
+
   document.getElementById("fundSubtotal").innerText =
     "Fund subtotal: " + fmtValue(fundSubtotal);
-
   document.getElementById("etfSubtotal").innerText =
     "ETF subtotal: " + fmtValue(etfSubtotal);
-
   document.getElementById("grandTotal").innerText =
-    "Total portfolio value: " +
-    fmtValue(fundSubtotal + etfSubtotal);
+    "Total portfolio value: " + fmtValue(total);
+
+  document.getElementById("lastUpdated").innerText =
+    new Date().toLocaleString();
+
+  saveHistory(total);
+  drawHistory();
 }
 
 loadPrices();
