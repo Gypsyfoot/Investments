@@ -100,15 +100,15 @@ const holdings = [
     type: "manual"
   },
   {
-    name: "FTSE All-World UCITS ETF",
     symbol: "VWRP.L",
+    name: "FTSE All-World UCITS ETF",
     units: 393,
     type: "auto",
     priceUnit: "GBP"
   },
   {
-    name: "FTSE All-World High Dividend Yield UCITS ETF",
     symbol: "VHYG.L",
+    name: "FTSE All-World High Dividend Yield UCITS ETF",
     units: 693,
     type: "auto",
     priceUnit: "GBX"
@@ -182,9 +182,7 @@ function drawHistory() {
     },
     options: {
       responsive: true,
-      plugins: {
-        legend: { display: false }
-      },
+      plugins: { legend: { display: false } },
       scales: {
         y: {
           ticks: {
@@ -241,7 +239,7 @@ async function loadPrices() {
 
       tbody.innerHTML += `
         <tr>
-          <td>${h.name}</td>
+          <td>${h.symbol} – ${h.name}</td>
           <td>${h.units.toLocaleString()}</td>
           <td>${fmtPrice(price)}</td>
           <td>${fmtValue(value)}</td>
